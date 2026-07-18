@@ -1,0 +1,103 @@
+name: Build Sarasa Term (SC/J, self-built Iosevka Latin)
+
+# 手动触发。matrix 按 region × 权重组拆 4 个 job，每个 job 只做一个权重的 CJK hinting，
+# 稳落在 6h/job 内（本机 16 线程 SC+J 全量冷构建 5h32m 为据；GitHub 标准 runner ~4 vCPU 更慢）。
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    strategy:
+      fail-fast: false
+      matrix:
+        region: [sc, j]
+        weightgroup: [regular, bold]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install AFDKO (pinned) — provides otf2ttf / otc2otf
+        run: |
+          python -m pip install --disable-pip-version-check "afdko==5.0.1"
+          otf2ttf --help >/dev/null && otc2otf --help >/dev/null
+          echo "afdko OK: $(which otf2ttf) $(which otc2otf)"
+
+      - name: Install ttfautohint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ttfautohint
+          ttfautohint --version
+
+      - name: npm ci (deterministic)
+        run: npm ci
+
+      - name: Generate single-region single-weightgroup config
+        run: node ci/gen-config.mjs ${{ matrix.region }} ${{ matrix.weightgroup }}
+
+      - name: Restore/seed verda build cache (CJK hints persist across commits)
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: ${{ runner.os }}-verdabuild-${{ matrix.region }}-${{ matrix.weightgroup }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-verdabuild-${{ matrix.region }}-${{ matrix.weightgroup }}-
+
+      - name: Build TTF (hinted + unhinted)
+        run: npm run build ttf
+
+      - name: List outputs
+        run: |
+          echo "== out/TTF =="; ls -1 out/TTF
+          echo "== out/TTF-Unhinted =="; ls -1 out/TTF-Unhinted
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sarasa-term-${{ matrix.region }}-${{ matrix.weightgroup }}
+          path: |
+            out/TTF/*.ttf
+            out/TTF-Unhinted/*.ttf
+          if-no-files-found: error
+          retention-days: 14
+
+  collect:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Verify complete set (expect 8 hinted + 8 unhinted = 16)
+        run: |
+          echo "== downloaded files =="
+          find all-artifacts -name '*.ttf' | sort
+          hinted=$(find all-artifacts -path '*/TTF/*.ttf' | wc -l)
+          unhinted=$(find all-artifacts -path '*/TTF-Unhinted/*.ttf' | wc -l)
+          total=$(find all-artifacts -name '*.ttf' | wc -l)
+          echo "hinted=$hinted unhinted=$unhinted total=$total"
+          test "$total" -eq 16 || { echo "FAIL: expected 16 TTF, got $total"; exit 1; }
+          # 期望文件名：Sarasa Term {SC,J} × {Regular,Italic,Bold,BoldItalic}
+          for r in SC J; do for s in Regular Italic Bold BoldItalic; do
+            find all-artifacts -name "SarasaTerm${r}-${s}.ttf" | grep -q . \
+              || { echo "FAIL: missing SarasaTerm${r}-${s}.ttf"; exit 1; }
+          done; done
+          echo "OK: 16 TTF, all SarasaTerm{SC,J}-{R,I,B,BI} present, no missing/duplicate."
