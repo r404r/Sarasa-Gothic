@@ -1,6 +1,6 @@
 {
 	"buildOptions": {},
-	"familyOrder": ["Gothic", "Ui", "Mono", "MonoSlab", "Term", "TermSlab", "Fixed", "FixedSlab"],
+	"familyOrder": ["Term"],
 	"families": {
 		"Gothic": {
 			"isGothic": true,
