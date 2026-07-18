@@ -104,18 +104,7 @@
 			}
 		}
 	},
-	"styleOrder": [
-		"ExtraLight",
-		"ExtraLightItalic",
-		"Light",
-		"LightItalic",
-		"Regular",
-		"Italic",
-		"SemiBold",
-		"SemiBoldItalic",
-		"Bold",
-		"BoldItalic"
-	],
+	"styleOrder": ["Regular", "Italic", "Bold", "BoldItalic"],
 	"latinGroups": {
 		"Inter": {
 			"isCff": false,
@@ -146,33 +135,12 @@
 		}
 	},
 	"styles": {
-		"ExtraLight": {
-			"name": "ExtraLight"
-		},
-		"ExtraLightItalic": {
-			"name": "ExtraLight Italic",
-			"uprightStyleMap": "ExtraLight"
-		},
-		"Light": {
-			"name": "Light"
-		},
-		"LightItalic": {
-			"name": "Light Italic",
-			"uprightStyleMap": "Light"
-		},
 		"Regular": {
 			"name": "Regular"
 		},
 		"Italic": {
 			"name": "Italic",
 			"uprightStyleMap": "Regular"
-		},
-		"SemiBold": {
-			"name": "SemiBold"
-		},
-		"SemiBoldItalic": {
-			"name": "SemiBold Italic",
-			"uprightStyleMap": "SemiBold"
 		},
 		"Bold": {
 			"name": "Bold"
