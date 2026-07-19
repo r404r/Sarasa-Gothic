@@ -41,7 +41,9 @@ ALLOWED_RANGES = [
     ("FontAwesome",          0xED00, 0xEFCE),
     ("FontAwesome",          0xF000, 0xF2FF),
     ("Octicons",             0xF400, 0xF533),
-    ("MaterialDesignIcons",  0xF0001, 0xF1AF0),
+    # MaterialDesignIcons (0xF0001–0xF1AF0, 6896 glyphs) 已由产品决策剔除：
+    # TrueType glyf numGlyphs≤65535 硬限，J 基座 58022 只余 7513，全集补入 10233 装不下；
+    # 决策=剔除 MDI，保留其余非-MDI 集 100% 完整（见 05-final-subset-decision）。
 ]
 # Powerline Extra 补差（缺失码位；离散，不含空洞 E0C9/E0CB）
 POWERLINE_EXTRA_ADD = (
@@ -54,6 +56,7 @@ EXCLUDED_NOTE = {
     "Progress(EE00-EE0B)": "决策3：保留既有 Iosevka 私有字形，不覆盖 → 不引入 Progress",
     "FontLogos": "NF-T5 排除：unlicensed + 商标",
     "U+2630": "决策4 前置条件（未占）不成立：成品已占用 → 逐码位保留既有，不补入",
+    "MaterialDesignIcons": "产品决策剔除（glyf 65535 硬限，J 余量不足）：剔 MDI，非-MDI 全集 100% 保留",
 }
 
 

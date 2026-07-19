@@ -1,12 +1,11 @@
 # NF-T6 逐码位 manifest（人读说明）
 固定源 Nerd v3.4.0 `SymbolsNerdFontMono-Regular.ttf`，占用参照 `SarasaTermSC-Regular.ttf`。
 ## 补入统计
-- 补入合计 **10233**（普通 10213 + Powerline 贴边 20）
+- 补入合计 **3337**（普通 3317 + Powerline 贴边 20）
   - Codicons: 439
   - Devicons: 496
   - FontAwesome: 1475
   - FontAwesomeExtension: 170
-  - MaterialDesignIcons: 6896
   - Octicons: 308
   - Pomicons: 11
   - PowerlineExtra: 20
@@ -21,6 +20,7 @@
   - Progress(EE00-EE0B)：决策3：保留既有 Iosevka 私有字形，不覆盖 → 不引入 Progress
   - FontLogos：NF-T5 排除：unlicensed + 商标
   - U+2630：决策4 前置条件（未占）不成立：成品已占用 → 逐码位保留既有，不补入
+  - MaterialDesignIcons：产品决策剔除（glyf 65535 硬限，J 余量不足）：剔 MDI，非-MDI 全集 100% 保留
 
 ## 断言
 - 补入集 ⊆ 放行集 ✔
