@@ -313,6 +313,17 @@ def main():
     regions = discover_regions(out_dir)
     files = ["SarasaTerm%s-%s" % (r, s) for r in regions for s in STYLES]
     print("发现 region: %s → 验证 %d 款" % ("/".join(regions), len(files)))
+    # 覆盖完整性断言（闭合 Codex 终审 r2 第 1 条稳健性）：
+    # ① 输出 region 集必须 == 输入 region 集（防「TC 输出整体缺失时只验 8 款仍成功」）；
+    # ② 每个 region×style 的输入/输出文件都必须存在（防漏验）。
+    regions_in = discover_regions(in_dir)
+    check("覆盖：输出 region 集(%s) == 输入 region 集(%s)"
+          % ("/".join(regions), "/".join(regions_in)), regions == regions_in)
+    missing = [f for f in files
+               if not (os.path.exists(os.path.join(in_dir, f + ".ttf"))
+                       and os.path.exists(os.path.join(out_dir, f + ".ttf")))]
+    check("覆盖：%d 款(region×style) 输入/输出文件齐全" % len(files), not missing,
+          "缺失: %s" % missing[:6])
     per_file = {}
     for f in files:
         print("\n=== %s ===" % f)
