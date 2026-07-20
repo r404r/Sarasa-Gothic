@@ -150,7 +150,7 @@
 			"uprightStyleMap": "Bold"
 		}
 	},
-	"subfamilyOrder": ["SC", "J"],
+	"subfamilyOrder": ["SC", "TC", "J"],
 	"os2encodings": {
 		"J": {
 			"gbk": false,
