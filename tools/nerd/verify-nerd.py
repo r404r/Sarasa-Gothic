@@ -313,12 +313,20 @@ def main():
     regions = discover_regions(out_dir)
     files = ["SarasaTerm%s-%s" % (r, s) for r in regions for s in STYLES]
     print("发现 region: %s → 验证 %d 款" % ("/".join(regions), len(files)))
-    # 覆盖完整性断言（闭合 Codex 终审 r2 第 1 条稳健性）：
-    # ① 输出 region 集必须 == 输入 region 集（防「TC 输出整体缺失时只验 8 款仍成功」）；
-    # ② 每个 region×style 的输入/输出文件都必须存在（防漏验）。
+    # 覆盖完整性断言（闭合 Codex 终审 r2/r3 第 1 条稳健性）：
+    # ① 输入/输出 region 集必须**恰为** EXPECT_REGIONS（防「输入+输出同缺 TC 时只验 8 款仍成功」）；
+    # ② 文件总数必须**恰为** 期望值；③ 每 region×style 输入/输出文件都存在。
+    # 期望交付集：可用 --expect-regions 覆盖，默认 SC/TC/J。
+    EXPECT_REGIONS = set(
+        (sys.argv[sys.argv.index("--expect-regions") + 1].split(",")
+         if "--expect-regions" in sys.argv else ["SC", "TC", "J"]))
+    n_expect = len(EXPECT_REGIONS) * len(STYLES)
     regions_in = discover_regions(in_dir)
-    check("覆盖：输出 region 集(%s) == 输入 region 集(%s)"
-          % ("/".join(regions), "/".join(regions_in)), regions == regions_in)
+    check("覆盖：输出 region 集 == 期望 %s（实发现 %s）"
+          % (sorted(EXPECT_REGIONS), "/".join(regions)), set(regions) == EXPECT_REGIONS)
+    check("覆盖：输入 region 集 == 期望 %s（实发现 %s）"
+          % (sorted(EXPECT_REGIONS), "/".join(regions_in)), set(regions_in) == EXPECT_REGIONS)
+    check("覆盖：款数 == 期望 %d（实 %d）" % (n_expect, len(files)), len(files) == n_expect)
     missing = [f for f in files
                if not (os.path.exists(os.path.join(in_dir, f + ".ttf"))
                        and os.path.exists(os.path.join(out_dir, f + ".ttf")))]
