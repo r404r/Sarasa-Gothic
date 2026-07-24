@@ -25,3 +25,6 @@ ns-proof-page/fonts
 config.private.json
 .vscode
 /dist-release/
+# Python 缓存（tools/nerd、tools/release 等脚本）
+__pycache__/
+*.py[cod]
