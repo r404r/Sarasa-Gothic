@@ -24,8 +24,20 @@ sys.path.insert(0, __file__.rsplit("/", 1)[0])
 import nerd_common as nc
 
 STYLES = ["Regular", "Italic", "Bold", "BoldItalic"]
-REGIONS = ["SC", "J"]
-FILES = ["SarasaTerm%s-%s" % (r, s) for r in REGIONS for s in STYLES]
+
+
+def discover_regions(out_dir):
+    """从 out_dir 实际存在的产物发现 region（覆盖 SC/TC/J 全部，不写死）。"""
+    import glob as _g, re as _re
+    regs = set()
+    for p in _g.glob(os.path.join(out_dir, "SarasaTerm*-*.ttf")):
+        m = _re.match(r"SarasaTerm([A-Za-z]+)-(%s)$" % "|".join(STYLES),
+                      os.path.basename(p)[:-4])
+        if m:
+            regs.add(m.group(1))
+    # 稳定顺序：SC, TC, J 优先，其余按字母
+    order = {"SC": 0, "TC": 1, "J": 2}
+    return sorted(regs, key=lambda r: (order.get(r, 9), r))
 FAIL = []
 
 
@@ -203,16 +215,17 @@ def raster_freetype(outp, add_cps):
     check("⑥ FreeType(Pillow) 行盒渲染无裁切 (%d 非空样本)" % rendered, not clip, "越盒 %s" % clip[:5])
 
 
-def consistency(per_file, out_dir):
-    print("\n=== NF-T11 8 样式一致性门禁 ===")
-    cps0 = set(per_file[FILES[0]])
-    check("NF-T11 8 样式新增码位集一致", all(set(per_file[f]) == cps0 for f in FILES))
-    check("NF-T11 8 样式新增 glyph 数一致 (%d)" % len(cps0),
-          all(len(per_file[f]) == len(cps0) for f in FILES))
+def consistency(per_file, out_dir, files, regions):
+    n = len(files)
+    print("\n=== NF-T11 %d 样式一致性门禁 ===" % n)
+    cps0 = set(per_file[files[0]])
+    check("NF-T11 %d 样式新增码位集一致" % n, all(set(per_file[f]) == cps0 for f in files))
+    check("NF-T11 %d 样式新增 glyph 数一致 (%d)" % (n, len(cps0)),
+          all(len(per_file[f]) == len(cps0) for f in files))
     sample = sorted(cps0)[:: max(1, len(cps0) // 15)][:15]
     # Italic/BI 直立：同 region Regular vs Italic 新 glyph 轮廓逐点相同
     upr_ok, det = True, ""
-    for region in REGIONS:
+    for region in regions:
         fr = TTFont(os.path.join(out_dir, "SarasaTerm%s-Regular.ttf" % region), recalcTimestamp=False)
         fitl = TTFont(os.path.join(out_dir, "SarasaTerm%s-Italic.ttf" % region), recalcTimestamp=False)
         cr, ci = fr.getBestCmap(), fitl.getBestCmap()
@@ -223,33 +236,111 @@ def consistency(per_file, out_dir):
             if a.value != b.value:
                 upr_ok, det = False, "%s U+%04X Italic≠Regular" % (region, cp); break
     check("NF-T11 Italic/BI 图标直立（与 Regular 轮廓逐点相同）", upr_ok, det)
-    # SC vs J 同 style 无漂移
-    drift_ok = True
+    # 各 region 同 style 无漂移（覆盖 SC/TC/J 全部两两：以 regions[0] 为基准）
+    base = regions[0]
+    drift_ok, ddet = True, ""
     for st in STYLES:
-        fsc = TTFont(os.path.join(out_dir, "SarasaTermSC-%s.ttf" % st), recalcTimestamp=False)
-        fj = TTFont(os.path.join(out_dir, "SarasaTermJ-%s.ttf" % st), recalcTimestamp=False)
-        csc, cj = fsc.getBestCmap(), fj.getBestCmap()
-        gsc, gj = fsc.getGlyphSet(), fj.getGlyphSet()
-        for cp in sample:
-            a, b = RecordingPen(), RecordingPen()
-            gsc[csc[cp]].draw(a); gj[cj[cp]].draw(b)
-            if a.value != b.value:
-                drift_ok = False; break
-    check("NF-T11 SC/J 同 style 新 glyph 轮廓一致（无漂移）", drift_ok)
+        fb = TTFont(os.path.join(out_dir, "SarasaTerm%s-%s.ttf" % (base, st)), recalcTimestamp=False)
+        cb, gb = fb.getBestCmap(), fb.getGlyphSet()
+        for region in regions[1:]:
+            fr = TTFont(os.path.join(out_dir, "SarasaTerm%s-%s.ttf" % (region, st)), recalcTimestamp=False)
+            cr, gr = fr.getBestCmap(), fr.getGlyphSet()
+            for cp in sample:
+                a, b = RecordingPen(), RecordingPen()
+                gb[cb[cp]].draw(a); gr[cr[cp]].draw(b)
+                if a.value != b.value:
+                    drift_ok, ddet = False, "%s vs %s %s U+%04X" % (base, region, st, cp); break
+            if not drift_ok: break
+        if not drift_ok: break
+    check("NF-T11 各 region(%s) 同 style 新 glyph 轮廓一致（无漂移）" % "/".join(regions), drift_ok, ddet)
+
+
+def raster_existing(inp, outp):
+    """① 补充（闭合 Codex 终审 r1 第 2 条）：既有 hinted glyph 的保真抽样。
+    覆盖 Latin(简单/含 hint)、数字、CJK(繁复)、composite(变音)、不同 instruction。
+    (a) **glyf 逐字节相同**（精确 TTX/glyf 比较，Codex 认可的等效手段）；
+    (b) FreeType raster 差异在**不可感知阈值**内（容忍 head.flags bit1 因新增居中图标被
+        合法重算 → 复杂斜体 CJK 斜向边缘的亚像素 AA 舍入；见 06 报告）。
+    RASTER_TOL：单像素强度差上限（0–255）。"""
+    from PIL import Image, ImageChops, ImageFont
+    RASTER_TOL = 40
+    fa = TTFont(inp, recalcTimestamp=False); fb = TTFont(outp, recalcTimestamp=False)
+    ca, cb = fa.getBestCmap(), fb.getBestCmap()
+    glyf_a, glyf_b = fa["glyf"], fb["glyf"]
+    fi = ImageFont.truetype(inp, 48); fo = ImageFont.truetype(outp, 48)
+    samples = "AaBglI10gqQ中一你好國書體éñü©®"
+    glyf_diffs, raster_gross, maxdiff = [], [], 0
+    for ch in samples:
+        cp = ord(ch)
+        gn_a = ca.get(cp); gn_b = cb.get(cp)
+        if gn_a is None and gn_b is None:
+            continue
+        # (a) glyf 逐字节
+        if gn_a is None or gn_b is None or \
+           glyf_a[gn_a].compile(glyf_a) != glyf_b[gn_b].compile(glyf_b):
+            glyf_diffs.append(ch); continue
+        # (b) raster 容差
+        bi = _render_char(fi, ch); bo = _render_char(fo, ch)
+        if bi is None or bo is None:
+            continue
+        dat = list(ImageChops.difference(bi, bo).get_flattened_data() if hasattr(
+            ImageChops.difference(bi, bo), "get_flattened_data") else
+            ImageChops.difference(bi, bo).getdata())
+        m = max(dat) if dat else 0
+        maxdiff = max(maxdiff, m)
+        if m > RASTER_TOL:
+            raster_gross.append((ch, m))
+    check("① 既有 glyph glyf 逐字节相同 (%d 抽样)" % len(samples), not glyf_diffs,
+          "glyf 变化字符: %s" % glyf_diffs)
+    check("① 既有 glyph raster 差异 ≤ %d (max=%d, 仅 head.flags-AA)" % (RASTER_TOL, maxdiff),
+          not raster_gross, "超阈: %s" % raster_gross[:5])
+
+
+def _render_char(ft, ch):
+    from PIL import Image, ImageDraw
+    img = Image.new("L", (80, 80), 0); d = ImageDraw.Draw(img)
+    try:
+        d.text((8, 8), ch, font=ft, fill=255)
+    except Exception:
+        return None
+    return img
 
 
 def main():
     in_dir, out_dir, mpath = sys.argv[1:4]
     manifest = json.load(open(mpath))
     add_cps = [e["cp"] for e in manifest["add"]]
+    regions = discover_regions(out_dir)
+    files = ["SarasaTerm%s-%s" % (r, s) for r in regions for s in STYLES]
+    print("发现 region: %s → 验证 %d 款" % ("/".join(regions), len(files)))
+    # 覆盖完整性断言（闭合 Codex 终审 r2/r3 第 1 条稳健性）：
+    # ① 输入/输出 region 集必须**恰为** EXPECT_REGIONS（防「输入+输出同缺 TC 时只验 8 款仍成功」）；
+    # ② 文件总数必须**恰为** 期望值；③ 每 region×style 输入/输出文件都存在。
+    # 期望交付集：可用 --expect-regions 覆盖，默认 SC/TC/J。
+    EXPECT_REGIONS = set(
+        (sys.argv[sys.argv.index("--expect-regions") + 1].split(",")
+         if "--expect-regions" in sys.argv else ["SC", "TC", "J"]))
+    n_expect = len(EXPECT_REGIONS) * len(STYLES)
+    regions_in = discover_regions(in_dir)
+    check("覆盖：输出 region 集 == 期望 %s（实发现 %s）"
+          % (sorted(EXPECT_REGIONS), "/".join(regions)), set(regions) == EXPECT_REGIONS)
+    check("覆盖：输入 region 集 == 期望 %s（实发现 %s）"
+          % (sorted(EXPECT_REGIONS), "/".join(regions_in)), set(regions_in) == EXPECT_REGIONS)
+    check("覆盖：款数 == 期望 %d（实 %d）" % (n_expect, len(files)), len(files) == n_expect)
+    missing = [f for f in files
+               if not (os.path.exists(os.path.join(in_dir, f + ".ttf"))
+                       and os.path.exists(os.path.join(out_dir, f + ".ttf")))]
+    check("覆盖：%d 款(region×style) 输入/输出文件齐全" % len(files), not missing,
+          "缺失: %s" % missing[:6])
     per_file = {}
-    for f in FILES:
+    for f in files:
         print("\n=== %s ===" % f)
         names = verify_pair(os.path.join(in_dir, f + ".ttf"),
                             os.path.join(out_dir, f + ".ttf"), manifest)
         raster_freetype(os.path.join(out_dir, f + ".ttf"), add_cps)
+        raster_existing(os.path.join(in_dir, f + ".ttf"), os.path.join(out_dir, f + ".ttf"))
         per_file[f] = names
-    consistency(per_file, out_dir)
+    consistency(per_file, out_dir, files, regions)
     print("\n==== 汇总 ====")
     if FAIL:
         print("FAIL 项 (%d):" % len(FAIL), FAIL)
