@@ -1,5 +1,7 @@
 # Sarasa Term — r404r custom build
 
+[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md)
+
 > [!IMPORTANT]
 > This is an **unofficial personal fork** of
 > [be5invis/Sarasa-Gothic](https://github.com/be5invis/Sarasa-Gothic), used for
